@@ -1,35 +1,30 @@
-# Import relevant functionality
+from typing import Annotated
+
 from langchain_anthropic import ChatAnthropic
-from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_core.messages import HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import create_react_agent
-import getpass
-import os
+from typing_extensions import TypedDict
 
-if not os.environ.get("ANTHROPIC_API_KEY"):
-    os.environ["ANTHROPIC_API_KEY"] = getpass.getpass(
-        "Enter API key for Anthropic: ")
+from langgraph.graph import StateGraph
+from langgraph.graph.message import add_messages
 
 
-# Create the agent
-memory = MemorySaver()
-model = ChatAnthropic(model_name="claude-3-sonnet-20240229")
-search = TavilySearchResults(max_results=2)
-tools = [search]
-agent_executor = create_react_agent(model, tools, checkpointer=memory)
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
 
-# Use the agent
-config = {"configurable": {"thread_id": "abc123"}}
-for chunk in agent_executor.stream(
-    {"messages": [HumanMessage(content="hi im bob! and i live in sf")]}, config
-):
-    print(chunk)
-    print("----")
 
-for chunk in agent_executor.stream(
-    {"messages": [HumanMessage(
-        content="whats the weather where I live?")]}, config
-):
-    print(chunk)
-    print("----")
+graph_builder = StateGraph(State)
+
+
+llm = ChatAnthropic(model="claude-3-5-sonnet-20240620")
+
+
+def chatbot(state: State):
+    return {"messages": [llm.invoke(state["messages"])]}
+
+
+# The first argument is the unique node name
+# The second argument is the function or object that will be called whenever
+# the node is used.
+graph_builder.add_node("chatbot", chatbot)
+graph_builder.set_entry_point("chatbot")
+graph_builder.set_finish_point("chatbot")
+graph = graph_builder.compile()
